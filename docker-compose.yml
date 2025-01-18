@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  app_db:  # Your application's database
+    image: postgres:15
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "dwara3"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    environment:
+      POSTGRES_USER: ${APP_DB_USER:-dwara3}
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:-dwara3}
+      POSTGRES_DB: ${APP_DB_NAME:-dwara3}
+    ports:
+      - "${APP_DB_PORT:-5433}:5432"  # Note: using 5433 to avoid conflict with Airflow's Postgres
+    volumes:
+      - app_postgres_data:/var/lib/postgresql/data
+      - ./db-init-scripts:/docker-entrypoint-initdb.d
+
+  api:  # Your application service
+    build: 
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      - DB_HOST=app_db
+      - DB_PORT=5432
+      - DB_USER=${APP_DB_USER:-dwara3}
+      - DB_PASSWORD=${APP_DB_PASSWORD:-dwara3}
+      - DB_NAME=${APP_DB_NAME:-dwara3}
+    volumes:
+      - ./src:/app/src
+    ports:
+      - "8000:8000"
+    depends_on:
+      app_db:
+        condition: service_healthy
+
+volumes:
+  app_postgres_data:
