@@ -26,8 +26,13 @@ services:
       - DB_USER=${APP_DB_USER:-dwara3}
       - DB_PASSWORD=${APP_DB_PASSWORD:-dwara3}
       - DB_NAME=${APP_DB_NAME:-dwara3}
+      - STAGING_FOLDER=${STAGING_FOLDER:-/staging}
+      - PROXY_OUTPUT_FOLDER=${PROXY_OUTPUT_FOLDER:-/proxy} 
+      - ATEMPO_API_URL=${ATEMPO_API_URL:-http://localhost:8000}
+      - ATEMPO_API_KEY=${ATEMPO_API_KEY:-default-key}
     volumes:
-      - ./src:/app/src
+      - ./app:/app/app
+      - ./start.sh:/app/start.sh
     ports:
       - "8000:8000"
     depends_on:
