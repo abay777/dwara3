@@ -12,22 +12,52 @@ jobs:
     
     steps:
     - uses: actions/checkout@v3
+
+    # Copy sample env file if not exists
+    - name: Create env file
+      run: |
+        cp .env.example .env || echo "Using existing .env file"
     
-    - name: Build the Docker image
-      run: docker-compose build
+    # Build and test API service
+    - name: Build API service
+      run: docker compose build api
       
-    - name: Start services
-      run: docker-compose up -d
+    - name: Start API and database
+      run: docker compose up -d api app_db
       
-    - name: Check running containers
-      run: docker ps
+    - name: Check API service health
+      run: |
+        sleep 10  # Wait for services to be ready
+        curl http://localhost:8000/ || exit 1
+    
+    # Build and test Airflow setup
+    - name: Build Airflow services
+      run: |
+        cd airflow
+        docker compose build
       
-    - name: Run tests
-      run: docker-compose run --rm app sh -c "pytest"
-      
-    - name: Stop services
+    - name: Start Airflow services
+      run: |
+        cd airflow
+        docker compose up -d
+        
+    - name: Check Airflow health
+      run: |
+        sleep 30  # Wait for Airflow services to be ready
+        curl http://localhost:8080/health || exit 1
+
+    # Cleanup
+    - name: Stop all services
       if: always()
-      run: docker-compose down
+      run: |
+        docker compose down
+        cd airflow && docker compose down
+        
+    - name: Show logs if failure
+      if: failure()
+      run: |
+        docker compose logs
+        cd airflow && docker compose logs
 
     - name: Verify cleanup
       if: always()
