@@ -1,4 +1,8 @@
 fastapi
 uvicorn
 sqlalchemy
-psycopg2-binary
+asyncpg
+pydantic
+pydantic-settings
+httpx
+python-multipart
