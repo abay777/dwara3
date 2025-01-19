@@ -1,6 +1,7 @@
 services:
   app_db:  # Your application's database
     image: postgres:15
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "dwara3"]
       interval: 5s
@@ -17,9 +18,14 @@ services:
       - ./db-init-scripts:/docker-entrypoint-initdb.d
 
   api:  # Your application service
-    build: 
-      context: .
-      dockerfile: Dockerfile.api
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api/api:/app/api
     environment:
       - DB_HOST=app_db
       - DB_PORT=5432
@@ -30,14 +36,26 @@ services:
       - PROXY_OUTPUT_FOLDER=${PROXY_OUTPUT_FOLDER:-/proxy} 
       - ATEMPO_API_URL=${ATEMPO_API_URL:-http://localhost:8000}
       - ATEMPO_API_KEY=${ATEMPO_API_KEY:-default-key}
-    volumes:
-      - ./app:/app/app
-      - ./start.sh:/app/start.sh
-    ports:
-      - "8000:8000"
     depends_on:
       app_db:
         condition: service_healthy
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "24678:24678"  # For Vite's HMR
+    volumes:
+      - ./ui:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - api
 
 volumes:
   app_postgres_data:
