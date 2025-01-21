@@ -1,0 +1,7 @@
+[agent]
+host = "0.0.0.0"  # Listen on all interfaces
+port = 8080       # Port for server to connect to
+
+[logging]
+level = "info"
+file = "dwara-agent.log"

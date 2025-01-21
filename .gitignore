@@ -10,3 +10,6 @@ dist
 build
 .cache
 .npm
+
+# Agent
+agent/target

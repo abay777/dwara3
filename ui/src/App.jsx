@@ -1,5 +1,5 @@
 import React from 'react'
-import FolderScan from './components/FolderScan'
+import { FolderScan } from './components/scan'
 
 function App() {
   return (
