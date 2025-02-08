@@ -1,0 +1,109 @@
+-- version 0.1
+
+CREATE TABLE volume (
+    id SERIAL PRIMARY KEY,
+    volume_type VARCHAR(10) NOT NULL CHECK (volume_type IN ('tape','disk'))
+);
+
+CREATE TABLE tape (
+    id INT PRIMARY KEY,
+    barcode VARCHAR(255) NOT NULL UNIQUE,
+    finalized BOOLEAN NOT NULL DEFAULT false,
+    pool_id INT NOT NULL,
+    suspect BOOLEAN NOT NULL DEFAULT false,
+    CONSTRAINT fk_tape_volume FOREIGN KEY (id)
+        REFERENCES volume(id) ON DELETE CASCADE
+);
+
+CREATE TABLE disk (
+    id INT PRIMARY KEY,
+    host_id INT NOT NULL,
+    device_uuid TEXT NOT NULL,
+    CONSTRAINT fk_disk_volume FOREIGN KEY (id)
+        REFERENCES volume(id) ON DELETE CASCADE
+);
+
+CREATE TABLE file (
+    id SERIAL PRIMARY KEY,
+    parent_id INT REFERENCES file(id),
+    is_dir BOOLEAN NOT NULL DEFAULT false,
+    pathname TEXT NOT NULL,
+    size INT NOT NULL,
+    checksum BYTEA,
+    ingest_dt DATE NOT NULL,
+    soft_delete BiOOLEAN NOT NULL DEFAULT false
+    override_access_level_id INT,
+    override_media_type_id INT
+);
+
+CREATE TABLE file_volume (
+    file_id INT NOT NULL,
+    volume_id INT NOT NULL,
+    start_block INT NOT NULL,
+    PRIMARY KEY (file_id, volume_id),
+    CONSTRAINT fk_file_volume_file
+        FOREIGN KEY (file_id) REFERENCES file(id) ON DELETE CASCADE,
+    CONSTRAINT fk_file_volume_volume
+        FOREIGN KEY (volume_id) REFERENCES volume(id) ON DELETE CASCADE
+);
+
+CREATE TABLE access_level (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE  -- e.g. 'public', 'private', 'top-secret', ...
+);
+
+CREATE TABLE media_type (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE  -- e.g. 'video', 'audio', 'photo', ...
+);
+
+CREATE TABLE event (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL
+    -- Possibly more fields describing the event as a whole
+);
+
+CREATE TABLE event_type (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    default_access_level_id INT NOT NULL
+        REFERENCES access_level(id),
+);
+
+CREATE TABLE session (
+    id SERIAL PRIMARY KEY,
+    event_id INT NOT NULL,
+    override_access_level_id INT,
+    name TEXT NOT NULL,  -- e.g. 'morning session', 'afternoon session'
+    CONSTRAINT fk_session_event
+        FOREIGN KEY (event_id) REFERENCES event(id) ON DELETE CASCADE
+    CONSTRAINT fk_session_access_leval
+        FOREIGN KEY (override_access_level_id) REFERENCES access_level(id),
+);
+
+CREATE TABLE media_device (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,  -- e.g. 'Sony FS7', 'Sony FX9', ...
+);
+
+CREATE TABLE artifact (
+    id SERIAL PRIMARY KEY,
+
+    -- Business relationships
+    session_id INT NOT NULL,
+    media_device_id INT,  
+    media_type_id INT NOT NULL,
+
+    -- Link to the data-level top directory
+    root_file_id INT NOT NULL,  -- references file.id
+    
+    CONSTRAINT fk_artifact_session
+        FOREIGN KEY (session_id) REFERENCES session(id) ON DELETE CASCADE,
+    CONSTRAINT fk_artifact_media_device
+        FOREIGN KEY (media_device_id) REFERENCES media_device(id) ON DELETE CASCADE,
+    CONSTRAINT fk_artifact_media_type
+        FOREIGN KEY (media_type_id) REFERENCES media_type(id),
+    CONSTRAINT fk_artifact_root_file
+        FOREIGN KEY (root_file_id) REFERENCES file(id) ON DELETE CASCADE
+);
+
