@@ -21,6 +21,7 @@ app.include_router(ingest.router, prefix="/api/ingest", tags=["ingest"])
 app.include_router(restore.router, prefix="/api/restore", tags=["restore"])
 app.include_router(files.router, prefix="/api/files", tags=["files"])
 
+
 @app.on_event("startup")
 async def startup_event():
     await init_db()

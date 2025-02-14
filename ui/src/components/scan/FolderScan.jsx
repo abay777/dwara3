@@ -1,231 +1,310 @@
-import React, { useState } from 'react';
-import { RefreshCw, FolderInput, Loader2 } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertTitle, AlertDescription } from '@/components/alert';
+import React, { useState } from "react";
+import { RefreshCw, ArrowBigDown, ArrowBigRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { scanLocalFiles } from "./scanLocalFiles";
+import { Select, SelectItem } from "../ui/select";
 
-// Sample NAS configuration
+// NAS Configuration
 const NAS_CONFIG = {
   nas1: {
-    name: 'Production NAS',
+    name: "Production NAS",
     scanDirs: [
-      { path: '/mnt/nas1/ingest/films', type: 'film' },
-      { path: '/mnt/nas1/ingest/series', type: 'series' },
-      { path: '/mnt/nas1/ingest/shorts', type: 'short' }
-    ]
+      { path: "/mnt/nas1/ingest/films", type: "film" },
+      { path: "/mnt/nas1/ingest/series", type: "series" },
+      { path: "/mnt/nas1/ingest/shorts", type: "short" },
+    ],
   },
   nas2: {
-    name: 'Backup NAS',
+    name: "Backup NAS",
     scanDirs: [
-      { path: '/mnt/nas2/ingest/documentaries', type: 'documentary' },
-      { path: '/mnt/nas2/ingest/raw', type: 'raw_footage' }
-    ]
-  }
+      { path: "/mnt/nas2/ingest/documentaries", type: "documentary" },
+      { path: "/mnt/nas2/ingest/raw", type: "raw_footage" },
+    ],
+  },
+  local: {
+    name: "Local Storage",
+    scanDirs: [],
+  },
 };
 
-// Sample data structure matching our existing format
-const SAMPLE_FOLDER_DATA = {
-  'Film Projects 2024': {
-    type: 'film',
-    nasLocation: 'nas1',
-    path: '/mnt/nas1/ingest/films/projects_2024',
-    validation: {
-      valid: true,
-      files_count: 156,
-      total_size_gb: 245.7,
-      issues: []
-    }
-  },
-  'Documentary Series': {
-    type: 'series',
-    nasLocation: 'nas1',
-    path: '/mnt/nas1/ingest/series/documentary_series',
-    validation: {
-      valid: false,
-      files_count: 89,
-      total_size_gb: 178.3,
-      issues: [
-        {
-          file: '/mnt/storage/docs/ep03/missing_subtitles.srt',
-          issue: 'Missing subtitle files'
-        },
-        {
-          file: '/mnt/storage/docs/ep05/metadata.json',
-          issue: 'Invalid metadata format'
-        }
-      ]
-    }
-  },
-  'Raw Footage Archive': {
-    type: 'raw_footage',
-    nasLocation: 'nas2',
-    path: '/mnt/nas2/ingest/raw/footage_archive',
-    validation: {
-      valid: true,
-      files_count: 432,
-      total_size_gb: 1256.8,
-      issues: []
-    }
-  },
-  'Short Films Collection': {
-    type: 'short',
-    nasLocation: 'nas1',
-    path: '/mnt/nas1/ingest/shorts/collection',
-    error: 'Failed to access directory',
-  },
-  'Documentary Projects': {
-    type: 'documentary',
-    nasLocation: 'nas2',
-    path: '/mnt/nas2/ingest/documentaries/projects',
-    validation: {
-      valid: false,
-      files_count: 67,
-      total_size_gb: 89.4,
-      issues: [
-        {
-          file: '/mnt/storage/anim/project2/render_files',
-          issue: 'Incomplete render sequence'
-        }
-      ]
-    }
-  }
-};
+// Media Types Filter
+const MEDIA_TYPES = ["all", "audio", "video", "transcription_doc", "picture"];
 
 const FolderScan = () => {
-  const [folderData, setFolderData] = useState(SAMPLE_FOLDER_DATA);
+  const [folderData, setFolderData] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedFolders, setSelectedFolders] = useState([]);
-  const [isIngesting, setIsIngesting] = useState(false);
-  const [selectedNas, setSelectedNas] = useState('all');
-  const [selectedType, setSelectedType] = useState('all');
+  const [selectedNas, setSelectedNas] = useState("local");
+  const [selectedMediaType, setSelectedMediaType] = useState("all");
+  const [expandedFolders, setExpandedFolders] = useState({});
+  const [selectedItems, setSelectedItems] = useState({});
+  const [selectAll, setSelectAll] = useState(false);
 
-  // Generate available content types from NAS config
-  const contentTypes = ['all', ...new Set(
-    Object.values(NAS_CONFIG).flatMap(nas => 
-      nas.scanDirs.map(dir => dir.type)
-    )
-  )];
+  // Toggle Folder Expand/Collapse
+  const toggleFolderExpand = (folderPath) => {
+    setExpandedFolders((prev) => ({
+      ...prev,
+      [folderPath]: !prev[folderPath],
+    }));
+  };
 
+  // Handle Scan
   const scanFolders = async () => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    setError(null);
+    setSelectedItems({});
+    setSelectAll(false);
+    let data = {};
+
+    if (selectedNas === "local") {
+      try {
+        data = await scanLocalFiles(selectedMediaType);
+        console.log(data, "file data");
+      } catch (err) {
+        setError("Failed to access local storage.");
+        setLoading(false);
+        return;
+      }
+    }
+
+    setFolderData(data);
     setLoading(false);
   };
 
-  const toggleSelectFolder = (folderName) => {
-    setSelectedFolders(prev => 
-      prev.includes(folderName)
-        ? prev.filter(name => name !== folderName)
-        : [...prev, folderName]
-    );
-  };
+  // Check if Ingest Button Should Be Active
+  const isIngestEnabled = Object.values(selectedItems).some(
+    (isSelected) => isSelected
+  );
 
+  const checkIfAllSelected = () => {
+    let totalValidItems = 0;
+    let selectedValidItems = 0;
+  
+    const traverseAndCount = (folder) => {
+      if (!folder) return;
+  
+      // Count valid folders
+      if (!folder.validation?.issues?.some(issue => issue.file === folder.path)) {
+        totalValidItems += 1;
+        if (selectedItems[folder.path]) selectedValidItems += 1;
+      }
+  
+      // Count valid files
+      if (folder.files) {
+        folder.files.forEach((file) => {
+          if (!folder.validation?.issues?.some(issue => issue.file === file.path)) {
+            totalValidItems += 1;
+            if (selectedItems[file.path]) selectedValidItems += 1;
+          }
+        });
+      }
+  
+      // Traverse valid subfolders
+      if (folder.subfolders) {
+        Object.values(folder.subfolders).forEach(subfolder => traverseAndCount(subfolder));
+      }
+    };
+  
+    Object.values(folderData).forEach(folder => traverseAndCount(folder));
+  
+    if (totalValidItems === 0) return false; // No valid files or folders
+    if (selectedValidItems === 0) return false; // Nothing selected
+    return selectedValidItems === totalValidItems ? true : "indeterminate"; // All or some selected
+  };
+  
+  console.log(checkIfAllSelected(),'value')
+  
+  // Function to toggle "Select All"
   const toggleSelectAll = () => {
-    const filteredFolders = Object.entries(folderData)
-      .filter(([_, data]) => {
-        const matchesNas = selectedNas === 'all' || data.nasLocation === selectedNas;
-        const matchesType = selectedType === 'all' || data.type === selectedType;
-        return matchesNas && matchesType;
-      })
-      .map(([name]) => name);
-
-    if (selectedFolders.length === filteredFolders.length) {
-      setSelectedFolders([]);
-    } else {
-      setSelectedFolders(filteredFolders);
-    }
+    const shouldSelectAll = checkIfAllSelected() !== true; // If not all selected, select all
+  
+    let updatedSelections = {};
+  
+    const traverseAndSelect = (folder) => {
+      if (!folder) return;
+  
+      // Select only valid folders
+      if (!folder.validation?.issues?.some(issue => issue.file === folder.path)) {
+        updatedSelections[folder.path] = shouldSelectAll;
+      }
+  
+      // Select only valid files
+      if (folder.files) {
+        folder.files.forEach((file) => {
+          if (!folder.validation?.issues?.some(issue => issue.file === file.path)) {
+            updatedSelections[file.path] = shouldSelectAll;
+          }
+        });
+      }
+  
+      // Traverse valid subfolders
+      if (folder.subfolders) {
+        Object.values(folder.subfolders).forEach(subfolder => traverseAndSelect(subfolder));
+      }
+    };
+  
+    Object.values(folderData).forEach(folder => traverseAndSelect(folder));
+  
+    setSelectedItems(updatedSelections);
   };
-
-  const handleIngest = async () => {
-    if (selectedFolders.length === 0) return;
-    setIsIngesting(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setSelectedFolders([]);
-    setIsIngesting(false);
-  };
-
-  // Filter folders based on selected NAS and content type
-  const filteredFolders = Object.entries(folderData)
-    .filter(([_, data]) => {
-      const matchesNas = selectedNas === 'all' || data.nasLocation === selectedNas;
-      const matchesType = selectedType === 'all' || data.type === selectedType;
-      return matchesNas && matchesType;
+  
+  
+  // Toggle selection for individual folders & files
+  const toggleSelection = (itemPath, itemType, folder) => {
+    setSelectedItems((prevSelectedItems) => {
+      let newSelection = { ...prevSelectedItems };
+  
+      if (itemType === 'folder') {
+        // Folder selection selects valid subfolders & files
+        const traverseAndSelect = (currentFolder) => {
+          if (!currentFolder) return;
+          newSelection[currentFolder.path] = !prevSelectedItems[currentFolder.path];
+  
+          if (currentFolder.files) {
+            currentFolder.files.forEach(file => {
+              if (!folder.validation?.issues?.some(issue => issue.file === file.path)) {
+                newSelection[file.path] = newSelection[currentFolder.path];
+              }
+            });
+          }
+  
+          if (currentFolder.subfolders) {
+            Object.values(currentFolder.subfolders).forEach(subfolder => traverseAndSelect(subfolder));
+          }
+        };
+        traverseAndSelect(folder);
+      } else {
+        // Select individual files if valid
+        if (!folder.validation?.issues?.some(issue => issue.file === itemPath)) {
+          newSelection[itemPath] = !prevSelectedItems[itemPath];
+        }
+      }
+  
+      return newSelection;
     });
+  };
 
-  if (loading) {
+  // Recursive function to render folders and files with selection rules
+  const renderFolderContents = (folder, level = 0) => {
     return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="w-6 h-6 animate-spin text-blue-500" />
-      </div>
-    );
-  }
+      <>
+        <tr key={folder.path} className="hover:bg-blue-50/30">
+          <td className="pl-6 pr-4 py-4 whitespace-nowrap">
+            <Checkbox
+              checked={!!selectedItems[folder.path]}
+              onChange={() => toggleSelection(folder.path, "folder", folder)}
+            />
+          </td>
+          <td
+            className="px-4 py-4 text-gray-900 font-medium flex items-center"
+            style={{ paddingLeft: `${level * 20}px` }}
+          >
+            <button
+              className="bg-gray-500 px-3 py-2 rounded-md"
+              onClick={() => toggleFolderExpand(folder.path)}
+            >
+              {expandedFolders[folder.path] ? (
+                <ArrowBigDown />
+              ) : (
+                <ArrowBigRight />
+              )}
+            </button>
+            <span className="ml-2">{folder.path.split("/").pop()}</span>
+          </td>
+          <td className="px-4 py-4 text-gray-600">{folder.path}</td>
+          <td className="px-4 py-4 text-gray-600">Folder</td>
+          <td className="px-4 py-4 text-gray-900">
+            {folder.validation?.files_count || 0}
+          </td>
+        </tr>
 
-  if (error) {
-    return (
-      <Alert variant="destructive" className="m-4">
-        <AlertTitle>Error scanning folders</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+        {expandedFolders[folder.path] &&
+          folder.files &&
+          folder.files.length > 0 &&
+          folder.files.map((file, index) => {
+            const fileIssue = folder.validation?.issues?.find(
+              (issue) => issue.file === file.path
+            );
+            const fileStatus = fileIssue ? "Invalid" : "Valid";
+
+            return (
+              <tr
+                key={`${folder.path}-${file.name}-${index}`}
+                className="bg-gray-50"
+              >
+                <td className="pl-12 py-2 whitespace-nowrap">
+                  <Checkbox
+                    checked={!!selectedItems[file.path]}
+                    onChange={() => toggleSelection(file.path, "file", folder)}
+                    disabled={!!fileIssue} // Disable invalid files
+                  />
+                </td>
+                <td
+                  className="px-4 py-2 text-gray-700"
+                  style={{ paddingLeft: `${(level + 1) * 20}px` }}
+                >
+                  {file.name}
+                </td>
+                <td className="px-4 py-2 text-gray-600">{file.path}</td>
+                <td className="px-4 py-2 text-gray-600">{file.type}</td>
+                <td className="px-4 py-2 text-gray-700">
+                  {parseFloat(file.size_gb).toFixed(2)} GB
+                </td>
+                <td className="px-4 py-2 text-gray-600">
+                  {fileStatus === "Valid" ? (
+                    <span className="text-green-600 font-semibold">Valid</span>
+                  ) : (
+                    <span className="text-red-600 font-semibold">
+                      Invalid ({fileIssue.issue})
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+
+        {expandedFolders[folder.path] &&
+          folder.subfolders &&
+          Object.values(folder.subfolders).map((subfolder) =>
+            renderFolderContents(subfolder, level + 1)
+          )}
+      </>
     );
-  }
+  };
 
   return (
-    <div className="w-full max-w-6xl mx-auto bg-gradient-to-b from-blue-50/50 to-white rounded-lg shadow-sm border border-blue-100">
+    <div className="w-full max-w-6xl mx-auto bg-white shadow-lg rounded-xl border border-gray-200">
       {/* Header Section */}
-      <div className="p-6 flex items-center justify-between border-b border-blue-100">
-        <h1 className="text-2xl font-semibold text-gray-900">Staging Folders</h1>
-        
+      <div className="p-6 flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 to-blue-100 rounded-t-xl">
+        <h1 className="text-2xl font-semibold text-gray-800">
+          Staging Folders
+        </h1>
         <div className="flex items-center gap-4">
           <Select value={selectedNas} onChange={setSelectedNas}>
-            <SelectTrigger className="w-48 bg-white border-blue-100 hover:border-blue-200 transition-colors">
-              <SelectValue placeholder="All NAS Locations" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All NAS Locations</SelectItem>
-              {Object.entries(NAS_CONFIG).map(([id, nas]) => (
-                <SelectItem key={id} value={id}>{nas.name}</SelectItem>
-              ))}
-            </SelectContent>
+            {Object.entries(NAS_CONFIG).map(([id, nas]) => (
+              <SelectItem key={id} value={id}>
+                {nas.name}
+              </SelectItem>
+            ))}
           </Select>
-
-          <Select value={selectedType} onChange={setSelectedType}>
-            <SelectTrigger className="w-40 bg-white border-blue-100 hover:border-blue-200 transition-colors">
-              <SelectValue placeholder="All Types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {contentTypes
-                .filter(t => t !== 'all')
-                .map(type => (
-                  <SelectItem key={type} value={type}>
-                    {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
-                  </SelectItem>
-              ))}
-            </SelectContent>
+          <Select value={selectedMediaType} onChange={setSelectedMediaType}>
+            {MEDIA_TYPES.map((type) => (
+              <SelectItem key={type} value={type}>
+                {type.replace("_", " ").toUpperCase()}
+              </SelectItem>
+            ))}
           </Select>
-
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={scanFolders}
-            className="bg-white hover:bg-blue-50 border-blue-100 hover:border-blue-200 text-gray-700 transition-colors"
+            className="bg-white border-gray-300 text-gray-700 px-4"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh Scan
+            <RefreshCw className="h-5 w-5 mr-2" />
+            Scan
           </Button>
-
-          <Button 
-            onClick={handleIngest}
-            disabled={selectedFolders.length === 0 || isIngesting}
-            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-          >
-            {isIngesting ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <FolderInput className="h-4 w-4 mr-2" />
-            )}
-            Ingest Selected
+          <Button variant="default" disabled={!isIngestEnabled}>
+            Ingest
           </Button>
         </div>
       </div>
@@ -236,85 +315,31 @@ const FolderScan = () => {
           <thead>
             <tr className="bg-blue-50/50">
               <th className="w-12 pl-6 pr-4 py-4">
-                <Checkbox 
-                  checked={selectedFolders.length === filteredFolders.length && filteredFolders.length > 0}
-                  onChange={toggleSelectAll}
-                />
+                {/* <Checkbox
+                 checked={checkIfAllSelected() === true}
+                 indeterminate={checkIfAllSelected() === "indeterminate"}
+                 onChange={toggleSelectAll} 
+                /> */}
               </th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-blue-900/60 uppercase tracking-wider">
+              <th className="px-4 py-4 text-left text-xs font-medium">
                 Folder Name
               </th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-blue-900/60 uppercase tracking-wider">
-                Location
-              </th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-blue-900/60 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-blue-900/60 uppercase tracking-wider">
-                Files
-              </th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-blue-900/60 uppercase tracking-wider">
-                Size
-              </th>
-              <th className="px-4 py-4 text-left text-xs font-medium text-blue-900/60 uppercase tracking-wider">
+              <th className="px-4 py-4 text-left text-xs font-medium">Path</th>
+              <th className="px-4 py-4 text-left text-xs font-medium">Type</th>
+              <th className="px-4 py-4 text-left text-xs font-medium">Files</th>
+              <th className="px-4 py-4 text-left text-xs font-medium">
                 Status
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-blue-100">
-            {filteredFolders.map(([folderName, data]) => (
-              <tr 
-                key={folderName}
-                className="hover:bg-blue-50/30 transition-colors"
-              >
-                <td className="pl-6 pr-4 py-4 whitespace-nowrap">
-                  <Checkbox 
-                    checked={selectedFolders.includes(folderName)}
-                    onChange={() => toggleSelectFolder(folderName)}
-                  />
-                </td>
-                <td className="px-4 py-4">
-                  <div className="flex items-center group relative">
-                    <FolderInput className="h-4 w-4 text-blue-300 mr-3" />
-                    <span className="font-medium text-gray-900">{folderName}</span>
-                    {/* Tooltip */}
-                    <div className="invisible group-hover:visible absolute left-0 -bottom-1 transform translate-y-full bg-gray-900 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10">
-                      {data.path}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-4 text-gray-600">
-                  {NAS_CONFIG[data.nasLocation].name}
-                </td>
-                <td className="px-4 py-4 text-gray-600">
-                  {data.type.charAt(0).toUpperCase() + data.type.slice(1).replace('_', ' ')}
-                </td>
-                <td className="px-4 py-4 text-gray-900">
-                  {data.validation?.files_count || '-'}
-                </td>
-                <td className="px-4 py-4 text-gray-900">
-                  {data.validation?.total_size_gb ? `${data.validation.total_size_gb} GB` : '-'}
-                </td>
-                <td className="px-4 py-4">
-                  <div className="flex items-center">
-                    <div className={`h-2.5 w-2.5 rounded-full mr-2 ${
-                      data.error 
-                        ? 'bg-yellow-500'
-                        : data.validation?.valid
-                          ? 'bg-green-500'
-                          : 'bg-red-500'
-                    }`} />
-                    <span className="text-gray-600">
-                      {data.error 
-                        ? 'Error'
-                        : data.validation?.valid
-                          ? 'Valid'
-                          : 'Invalid'}
-                    </span>
-                  </div>
-                </td>
+          <tbody>
+            {Object.keys(folderData).length === 0 ? (
+              <tr>
+                <td colSpan="6">No valid files found.</td>
               </tr>
-            ))}
+            ) : (
+              renderFolderContents(folderData)
+            )}
           </tbody>
         </table>
       </div>
